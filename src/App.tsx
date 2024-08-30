@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, gql, useQuery } from "@apollo/client";
 import "./App.css";
 import {
@@ -27,7 +27,7 @@ function App() {
 
   useQuery(gql(GET_ALL_TODOS), {
     onCompleted: (data) => {
-      console.log(data);
+      console.log("USEQUERY RESPONSE:", data);
       setTodos(data.todos);
       setLoaded(true);
     },
@@ -35,6 +35,7 @@ function App() {
   const [addTodo] = useMutation(gql(ADD_TODO));
   const [completeTodo] = useMutation(gql(COMPLETE_TODO), {
     errorPolicy: "all",
+    fetchPolicy: "no-cache",
   });
   const [deleteTodo] = useMutation(gql(DELETE_TODO));
 
@@ -54,9 +55,11 @@ function App() {
 
   // Update cache with rendered change
   useEffect(() => {
-    if ((loaded || !isOnline) && todos) {
-      console.log("updating cache", todos);
-      DBSingleton.updateCacheValue("query", "GetAllTodos", todos);
+    if (!loaded) return;
+
+    if (!isOnline && todos) {
+      console.log("updating cache because offline", todos);
+      DBSingleton.updateCacheValue("query", "GetAllTodos", { todos: todos });
     }
   }, [todos]);
 
@@ -74,17 +77,21 @@ function App() {
     }
   };
 
-  const filteredTodos = todos.filter((todo) => {
-    if (filter === "completed") return todo.completed;
-    if (filter === "notCompleted") return !todo.completed;
-    return true;
-  });
-
-  const initDB = async () => {
-    await DBSingleton.getInstance();
-  };
+  const filteredTodos = useMemo(
+    () =>
+      todos?.filter((todo) => {
+        if (filter === "completed") return todo.completed;
+        if (filter === "notCompleted") return !todo.completed;
+        return true;
+      }),
+    [todos, filter]
+  );
 
   useEffect(() => {
+    const initDB = async () => {
+      await DBSingleton.getInstance();
+    };
+
     initDB();
   }, []);
 
@@ -113,7 +120,7 @@ function App() {
         <button onClick={() => setFilter("notCompleted")}>Not Completed</button>
       </div>
       <div>
-        {filteredTodos.map((task) => (
+        {filteredTodos?.map((task) => (
           <div key={task.id} className="todo-item">
             <span className={task.completed ? "completed" : ""}>
               {task.description}
